@@ -37,13 +37,13 @@ City names are resolved automatically; if a name is ambiguous the error lists ca
 ```sh
 go build ./cmd/flixbus-mcp
 
-# stdio (default)
-./flixbus-mcp
-
-# http (binds loopback by default; the server has no auth of its own,
+# http (default; binds loopback — the server has no auth of its own,
 # so only expose it on networks you trust or behind a reverse proxy)
-./flixbus-mcp -transport http
-./flixbus-mcp -transport http -addr :8748   # all interfaces
+./flixbus-mcp
+./flixbus-mcp -addr :8748   # all interfaces
+
+# stdio
+./flixbus-mcp -transport stdio
 
 # docker
 docker run -p 8748:8748 ghcr.io/adambenhassen/flixbus-mcp
