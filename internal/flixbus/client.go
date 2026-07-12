@@ -82,7 +82,7 @@ func (c *Client) getJSON(ctx context.Context, path string, q url.Values, out any
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", userAgent)
 	if c.apiKey != "" {
-		req.Header.Set("X-API-Key", c.apiKey)
+		req.Header.Set("X-Api-Key", c.apiKey)
 	}
 	resp, err := c.hc.Do(req)
 	if err != nil {
