@@ -21,7 +21,8 @@ import (
 	"github.com/adambenhassen/flixbus-mcp/internal/tools"
 )
 
-const version = "0.1.0"
+// version is stamped by the release build via -ldflags "-X main.version=...".
+var version = "dev"
 
 func main() {
 	if err := run(); err != nil {

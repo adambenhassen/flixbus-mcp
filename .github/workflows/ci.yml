@@ -21,9 +21,54 @@ jobs:
       - run: go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2 run
       - run: docker build -t flixbus-mcp:ci .
 
+  smoke:
+    # end-to-end against the live FlixBus API; skipped on PRs to keep them
+    # deterministic — gates master and releases
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go test -tags smoke -timeout 5m -v ./smoke
+
+  release-binaries:
+    if: github.event_name == 'release'
+    needs: [build, smoke]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    strategy:
+      matrix:
+        include:
+          - { goos: linux, goarch: amd64 }
+          - { goos: linux, goarch: arm64 }
+          - { goos: darwin, goarch: amd64 }
+          - { goos: darwin, goarch: arm64 }
+          - { goos: windows, goarch: amd64 }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Build and upload
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "0"
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          bin="flixbus-mcp-${TAG}-${GOOS}-${GOARCH}"
+          [ "$GOOS" = "windows" ] && bin="${bin}.exe"
+          go build -trimpath -ldflags="-s -w -X main.version=${TAG#v}" -o "$bin" ./cmd/flixbus-mcp
+          gh release upload "$TAG" "$bin"
+
   docker:
     if: github.event_name == 'release'
-    needs: build
+    needs: [build, smoke]
     runs-on: ubuntu-latest
     permissions:
       contents: read

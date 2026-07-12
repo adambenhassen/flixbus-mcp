@@ -1,56 +1,38 @@
+<div align="center">
+
+<img src="assets/banner.svg" alt="flixbus-mcp — FlixBus trip search for AI agents" width="100%">
+
 # flixbus-mcp
 
-MCP server for FlixBus trip search. Talks to FlixBus's public JSON API directly — no API key, no browser, no scraping. Supports stdio and streamable HTTP transports.
+**FlixBus trip search for AI agents — a Model Context Protocol server in Go.**
 
-## Tools
+[![CI](https://github.com/adambenhassen/flixbus-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/adambenhassen/flixbus-mcp/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/adambenhassen/flixbus-mcp)](https://github.com/adambenhassen/flixbus-mcp/releases/latest)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/adambenhassen/flixbus-mcp)](go.mod)
+[![Go Report Card](https://goreportcard.com/badge/github.com/adambenhassen/flixbus-mcp)](https://goreportcard.com/report/github.com/adambenhassen/flixbus-mcp)
 
-### `search_cities`
+</div>
 
-Find FlixBus cities and their ids.
+Talks to FlixBus's public JSON API directly — no API key, no browser, no scraping. City names resolve automatically, prices are checkout totals (platform fee included), and every search comes with a ready-to-open booking link. Serves MCP over **stdio** and **streamable HTTP**.
 
-| Input | Type | Description |
-|-------|------|-------------|
-| `query` | string | city name or prefix, e.g. `Berlin` (required) |
-| `lang` | string | ISO 639-1 language for results, defaults to the server locale's language (`en` unless `FLIXBUS_LOCALE` is set) |
+## Features
 
-Returns `cities`: id (UUID), name, country, latitude/longitude, `is_flixbus_city`, `has_train_station`.
+- 🚌 **Trip search** — times, stations, duration, direct/transfer, live prices and seat availability
+- 🏙️ **City resolution** — pass `"Berlin"`, not a UUID; ambiguous names return candidates instead of guessing
+- 💶 **Honest prices** — checkout totals including FlixBus's mandatory platform fee, in your currency
+- 🔗 **Booking deeplinks** — one click from search result to the FlixBus shop with the full passenger selection
+- 🔌 **Two transports** — stdio for MCP clients, streamable HTTP for daemons (loopback by default)
+- 📦 **Zero config** — a single static binary or a 10 MB distroless container; one direct dependency
 
-### `search_trips`
+## Quick start
 
-Search trips between two cities on a date.
-
-| Input | Type | Description |
-|-------|------|-------------|
-| `from` | string | origin city name or FlixBus city UUID (required) |
-| `to` | string | destination city name or FlixBus city UUID (required) |
-| `date` | string | departure date, `YYYY-MM-DD` (required) |
-| `adults` | int | adult passengers, default 1 |
-| `children` | int | child passengers, default 0 |
-| `bikes` | int | bike slots, default 0 (max 9 per category) |
-| `currency` | string | ISO 4217 price currency, defaults to the server currency (`EUR` unless `FLIXBUS_CURRENCY` is set) |
-| `lang` | string | ISO 639-1 language for resolving city names, defaults to the server locale's language |
-| `max_results` | int | maximum trips returned, default 20 (max 100) |
-
-City names are resolved automatically; if a name is ambiguous the error lists candidate ids. Returns the currency, a `shop.flixbus.com` booking link carrying the full passenger selection, and trips in chronological departure order: times (ISO 8601), station names, duration, transfer type, price (checkout total, including FlixBus's platform fee when it is mandatory), seats remaining, and status.
-
-## Run
+### Claude Code
 
 ```sh
-go build ./cmd/flixbus-mcp
-
-# http (default; binds loopback — the server has no auth of its own,
-# so only expose it on networks you trust or behind a reverse proxy)
-./flixbus-mcp
-./flixbus-mcp -addr :8748   # all interfaces
-
-# stdio
-./flixbus-mcp -transport stdio
-
-# docker
-docker run -p 8748:8748 ghcr.io/adambenhassen/flixbus-mcp
+claude mcp add flixbus -- /path/to/flixbus-mcp -transport stdio
 ```
 
-Client config (stdio):
+### Claude Desktop / other MCP clients
 
 ```json
 {
@@ -63,22 +45,114 @@ Client config (stdio):
 }
 ```
 
+### HTTP
+
+```sh
+# binds 127.0.0.1:8748 — the server has no auth of its own, so only
+# expose it on networks you trust or behind a reverse proxy
+flixbus-mcp
+flixbus-mcp -addr :8748   # all interfaces
+```
+
+### Docker
+
+```sh
+docker run --rm -p 8748:8748 ghcr.io/adambenhassen/flixbus-mcp
+```
+
+### From source
+
+```sh
+go install github.com/adambenhassen/flixbus-mcp/cmd/flixbus-mcp@latest
+```
+
+Prebuilt binaries for Linux, macOS and Windows are on the [releases page](https://github.com/adambenhassen/flixbus-mcp/releases).
+
+## Tools
+
+### `search_trips`
+
+Search trips between two cities on a date.
+
+| Input | Type | Description |
+|-------|------|-------------|
+| `from` | string | origin city name or FlixBus city UUID **(required)** |
+| `to` | string | destination city name or FlixBus city UUID **(required)** |
+| `date` | string | departure date, `YYYY-MM-DD` **(required)** |
+| `adults` | int | adult passengers, default 1 (max 9) |
+| `children` | int | child passengers, default 0 (max 9) |
+| `bikes` | int | bike slots, default 0 (max 9) |
+| `currency` | string | ISO 4217 price currency, defaults to the server currency |
+| `lang` | string | ISO 639-1 language for resolving city names, defaults to the server locale |
+| `max_results` | int | maximum trips returned, default 20 (max 100) |
+
+<details>
+<summary>Example response</summary>
+
+```json
+{
+  "from_city": "Berlin",
+  "to_city": "Munich",
+  "currency": "EUR",
+  "booking_url": "https://shop.flixbus.com/search?adult=1&arrivalCity=…&currency=EUR&departureCity=…&rideDate=20.07.2026",
+  "trips": [
+    {
+      "departure": "2026-07-20T07:15:00+02:00",
+      "arrival": "2026-07-20T17:35:00+02:00",
+      "departure_station": "Berlin Südkreuz",
+      "arrival_station": "Munich Fröttmaning",
+      "duration": "10h20m",
+      "transfer_type": "Transfer",
+      "direct": false,
+      "price": 78.97,
+      "seats_remaining": 17,
+      "status": "available"
+    }
+  ]
+}
+```
+
+</details>
+
+Trips come back in chronological departure order. If a city name is ambiguous (two Birminghams), the error lists the candidate ids to pass instead.
+
+### `search_cities`
+
+Find FlixBus cities and their ids.
+
+| Input | Type | Description |
+|-------|------|-------------|
+| `query` | string | city name or prefix, e.g. `Berlin` **(required)** |
+| `lang` | string | ISO 639-1 language for results, defaults to the server locale |
+
+Returns matches with the id (UUID), name, country, coordinates, and whether the city is bookable (`is_flixbus_city`) or has a train station.
+
 ## Configuration
 
-| Env var | Default | Description |
-|---------|---------|-------------|
+All configuration is via environment variables — none are required.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
 | `FLIXBUS_CURRENCY` | `EUR` | default price currency |
-| `FLIXBUS_LOCALE` | `en_US` | locale for search results |
-| `FLIXBUS_TIMEOUT` | `30s` | HTTP client timeout (must be positive) |
-| `FLIXBUS_API_KEY` | _(empty)_ | optional, sent as `X-Api-Key` if set |
+| `FLIXBUS_LOCALE` | `en_US` | locale for search results (`en-US` is normalized) |
+| `FLIXBUS_TIMEOUT` | `30s` | HTTP client timeout, must be positive |
+| `FLIXBUS_API_KEY` | _(empty)_ | optional, sent as `X-Api-Key` if ever needed |
 
-## Notes
-
-This uses the unofficial API that flixbus.com itself calls. It requires no credentials today, but endpoints may change without notice. Be polite with request volume.
+| Flag | Default | Description |
+|------|---------|-------------|
+| `-transport` | `http` | `stdio` or `http` |
+| `-addr` | `127.0.0.1:8748` | listen address for the http transport |
 
 ## Development
 
 ```sh
-go test ./...
+go test ./...                              # unit tests (recorded API fixtures)
+go test -tags smoke -timeout 5m ./smoke    # end-to-end against the live API
 golangci-lint run
 ```
+
+CI runs vet, race-enabled tests, the linter, and a Docker build on every push and PR; live smoke tests gate master and releases. Publishing a GitHub release builds binaries for five platforms and pushes the container image to `ghcr.io`.
+
+## How it works
+
+The server calls the same unofficial JSON API that flixbus.com itself uses (`global.api.flixbus.com`): one endpoint to resolve city names, one to search trips. It requires no credentials today, but it is not a contracted API — endpoints may change without notice, and this project may break when they do. Be polite with request volume. Not affiliated with Flix SE.

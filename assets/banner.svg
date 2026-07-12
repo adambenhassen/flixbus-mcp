@@ -1,0 +1,63 @@
+<svg width="1200" height="300" viewBox="0 0 1200 300" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="flixbus-mcp — FlixBus trip search for AI agents">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1200" y2="300" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0b1210"/>
+      <stop offset="1" stop-color="#101d16"/>
+    </linearGradient>
+    <linearGradient id="glow" x1="0" y1="300" x2="1200" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#73d700" stop-opacity="0.16"/>
+      <stop offset="0.5" stop-color="#73d700" stop-opacity="0.02"/>
+      <stop offset="1" stop-color="#73d700" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="busbody" x1="880" y1="90" x2="880" y2="210" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#8ceb1a"/>
+      <stop offset="1" stop-color="#5cae00"/>
+    </linearGradient>
+  </defs>
+
+  <!-- background -->
+  <rect width="1200" height="300" rx="16" fill="url(#bg)"/>
+  <rect width="1200" height="300" rx="16" fill="url(#glow)"/>
+  <rect x="0.5" y="0.5" width="1199" height="299" rx="15.5" stroke="#73d700" stroke-opacity="0.25"/>
+
+  <!-- title -->
+  <text x="72" y="148" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="58" font-weight="700" fill="#f0f6ef">flixbus<tspan fill="#73d700">-mcp</tspan></text>
+  <text x="74" y="192" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="22" fill="#9db4a4">FlixBus trip search for AI agents · Model Context Protocol server in Go</text>
+
+  <!-- terminal-ish hint -->
+  <text x="74" y="238" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16" fill="#5f7566">$ search_trips Berlin → Munich · 2026-07-20 · from €19.99</text>
+
+  <!-- bus -->
+  <g>
+    <!-- speed lines -->
+    <rect x="640" y="118" width="70" height="8" rx="4" fill="#73d700" fill-opacity="0.25"/>
+    <rect x="670" y="146" width="55" height="8" rx="4" fill="#73d700" fill-opacity="0.4"/>
+    <rect x="652" y="174" width="66" height="8" rx="4" fill="#73d700" fill-opacity="0.2"/>
+    <!-- body -->
+    <rect x="760" y="88" width="360" height="124" rx="22" fill="url(#busbody)"/>
+    <!-- windshield + windows -->
+    <rect x="1064" y="104" width="40" height="52" rx="10" fill="#0b1210" fill-opacity="0.85"/>
+    <rect x="784" y="104" width="60" height="44" rx="9" fill="#0b1210" fill-opacity="0.85"/>
+    <rect x="856" y="104" width="60" height="44" rx="9" fill="#0b1210" fill-opacity="0.85"/>
+    <rect x="928" y="104" width="60" height="44" rx="9" fill="#0b1210" fill-opacity="0.85"/>
+    <!-- door -->
+    <rect x="1000" y="104" width="44" height="88" rx="8" fill="#0b1210" fill-opacity="0.6"/>
+    <line x1="1022" y1="108" x2="1022" y2="188" stroke="#0b1210" stroke-opacity="0.8" stroke-width="3"/>
+    <!-- stripe -->
+    <rect x="760" y="164" width="232" height="10" rx="5" fill="#0b1210" fill-opacity="0.35"/>
+    <!-- headlight -->
+    <circle cx="1106" cy="180" r="7" fill="#fff8d6"/>
+    <!-- wheels -->
+    <circle cx="836" cy="212" r="26" fill="#0b1210"/>
+    <circle cx="836" cy="212" r="12" fill="#39534a"/>
+    <circle cx="1040" cy="212" r="26" fill="#0b1210"/>
+    <circle cx="1040" cy="212" r="12" fill="#39534a"/>
+    <!-- road -->
+    <rect x="620" y="244" width="520" height="4" rx="2" fill="#2a3b30"/>
+    <rect x="660" y="244" width="40" height="4" rx="2" fill="#73d700" fill-opacity="0.5"/>
+    <rect x="760" y="244" width="40" height="4" rx="2" fill="#73d700" fill-opacity="0.5"/>
+    <rect x="860" y="244" width="40" height="4" rx="2" fill="#73d700" fill-opacity="0.5"/>
+    <rect x="960" y="244" width="40" height="4" rx="2" fill="#73d700" fill-opacity="0.5"/>
+    <rect x="1060" y="244" width="40" height="4" rx="2" fill="#73d700" fill-opacity="0.5"/>
+  </g>
+</svg>
