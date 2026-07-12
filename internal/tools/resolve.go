@@ -13,10 +13,10 @@ var uuidRe = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[
 
 const maxCandidates = 5
 
-// langFromLocale reduces an underscore locale (en_US) to the short ISO 639-1
+// langFromLocale reduces a locale (en_US or en-US) to the short ISO 639-1
 // code the autocomplete endpoint expects (en).
 func langFromLocale(locale string) string {
-	lang, _, _ := strings.Cut(locale, "_")
+	lang, _, _ := strings.Cut(strings.ReplaceAll(locale, "-", "_"), "_")
 	if lang == "" {
 		return "en"
 	}
@@ -25,9 +25,10 @@ func langFromLocale(locale string) string {
 
 // resolveCity turns a user-supplied city name or UUID into a city id plus
 // display name. UUIDs pass through without a network call (name comes back
-// empty). Names resolve via autocomplete in the given language: an exact
-// case-insensitive match wins; else a single bookable candidate wins; else
-// the caller gets an error listing candidates.
+// empty). Names resolve via autocomplete in the given language: a UNIQUE
+// exact case-insensitive match wins; else a single bookable candidate wins;
+// else the caller gets an error listing candidates — including when several
+// distinct cities share the exact name (Birmingham GB vs Birmingham US).
 func resolveCity(ctx context.Context, c *flixbus.Client, input, lang string) (id, name string, err error) {
 	input = strings.TrimSpace(input)
 	if uuidRe.MatchString(input) {
@@ -37,7 +38,7 @@ func resolveCity(ctx context.Context, c *flixbus.Client, input, lang string) (id
 	if err != nil {
 		return "", "", err
 	}
-	var cities []flixbus.City
+	cities := make([]flixbus.City, 0, len(all))
 	for _, city := range all {
 		if city.IsFlixbusCity {
 			cities = append(cities, city)
@@ -46,12 +47,18 @@ func resolveCity(ctx context.Context, c *flixbus.Client, input, lang string) (id
 	if len(cities) == 0 {
 		return "", "", fmt.Errorf("no FlixBus city found for %q", input)
 	}
+	var exact []flixbus.City
 	for _, city := range cities {
 		if strings.EqualFold(city.Name, input) {
-			return city.ID, city.Name, nil
+			exact = append(exact, city)
 		}
 	}
-	if len(cities) == 1 {
+	switch {
+	case len(exact) == 1:
+		return exact[0].ID, exact[0].Name, nil
+	case len(exact) > 1:
+		cities = exact // ambiguous among the exact matches
+	case len(cities) == 1:
 		return cities[0].ID, cities[0].Name, nil
 	}
 	names := make([]string, 0, maxCandidates)

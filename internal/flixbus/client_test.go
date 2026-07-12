@@ -51,21 +51,19 @@ func TestAutocompleteCities(t *testing.T) {
 	if top.Name == "" || top.ID == "" || top.Country == "" {
 		t.Errorf("first city missing fields: %+v", top)
 	}
-	if top.Score <= 0 {
-		t.Errorf("Score = %v, want > 0", top.Score)
-	}
 }
 
 func TestSearchTrips(t *testing.T) {
 	srv := fixtureServer(t, "/search/service/v4/search",
 		"testdata/search_berlin_munich.json", map[string]string{
-			"from_city_id":   "40d8f682-8646-11e6-9066-549f350fcb0c",
-			"to_city_id":     "40d901a5-8646-11e6-9066-549f350fcb0c",
-			"departure_date": "20.07.2026",
-			"products":       `{"adult":1}`,
-			"currency":       "EUR",
-			"locale":         "en_US",
-			"search_by":      "cities",
+			"from_city_id":                 "40d8f682-8646-11e6-9066-549f350fcb0c",
+			"to_city_id":                   "40d901a5-8646-11e6-9066-549f350fcb0c",
+			"departure_date":               "20.07.2026",
+			"products":                     `{"adult":1}`,
+			"currency":                     "EUR",
+			"locale":                       "en_US",
+			"search_by":                    "cities",
+			"include_after_midnight_rides": "1",
 		})
 	c := flixbus.New(srv.URL, "", 5*time.Second)
 	resp, err := c.SearchTrips(context.Background(), flixbus.SearchParams{
@@ -95,6 +93,59 @@ func TestSearchTrips(t *testing.T) {
 	}
 	if _, ok := resp.Cities["40d8f682-8646-11e6-9066-549f350fcb0c"]; !ok {
 		t.Error("cities map missing Berlin UUID")
+	}
+	if len(resp.Stations) == 0 {
+		t.Error("stations map decoded empty")
+	}
+}
+
+func TestSearchTripsProductsEncoding(t *testing.T) {
+	// json.Marshal sorts map keys, so the products string is deterministic
+	srv := fixtureServer(t, "/search/service/v4/search",
+		"testdata/search_berlin_munich.json", map[string]string{
+			"products": `{"adult":2,"bike_slot":1,"children":1}`,
+		})
+	c := flixbus.New(srv.URL, "", 5*time.Second)
+	_, err := c.SearchTrips(context.Background(), flixbus.SearchParams{
+		FromCityID:    "40d8f682-8646-11e6-9066-549f350fcb0c",
+		ToCityID:      "40d901a5-8646-11e6-9066-549f350fcb0c",
+		DepartureDate: time.Date(2026, 7, 20, 0, 0, 0, 0, time.UTC),
+		Adults:        2,
+		Children:      1,
+		Bikes:         1,
+		Currency:      "EUR",
+		Locale:        "en_US",
+	})
+	if err != nil {
+		t.Fatalf("SearchTrips: %v", err)
+	}
+}
+
+func TestSearchTripsRejectsZeroAdults(t *testing.T) {
+	c := flixbus.New("http://127.0.0.1:1", "", time.Second) // must not hit the network
+	_, err := c.SearchTrips(context.Background(), flixbus.SearchParams{})
+	if err == nil || !strings.Contains(err.Error(), "adults") {
+		t.Fatalf("want adults guard error, got: %v", err)
+	}
+}
+
+func TestBookingURL(t *testing.T) {
+	u := flixbus.BookingURL(flixbus.SearchParams{
+		FromCityID:    "from-uuid",
+		ToCityID:      "to-uuid",
+		DepartureDate: time.Date(2026, 7, 20, 0, 0, 0, 0, time.UTC),
+		Adults:        2,
+		Children:      1,
+		Bikes:         1,
+		Currency:      "GBP",
+	})
+	for _, want := range []string{
+		"departureCity=from-uuid", "arrivalCity=to-uuid", "rideDate=20.07.2026",
+		"adult=2", "children=1", "bike_slot=1", "currency=GBP",
+	} {
+		if !strings.Contains(u, want) {
+			t.Errorf("BookingURL %q missing %q", u, want)
+		}
 	}
 }
 

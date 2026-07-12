@@ -66,8 +66,7 @@ func (d *Deps) searchCities(ctx context.Context, _ *mcp.CallToolRequest, in Sear
 	if strings.TrimSpace(in.Query) == "" {
 		return nil, SearchCitiesOut{}, errors.New("query is required")
 	}
-	lang := cmp.Or(in.Lang, langFromLocale(d.Cfg.Locale))
-	cities, err := d.Client.AutocompleteCities(ctx, in.Query, lang)
+	cities, err := d.Client.AutocompleteCities(ctx, in.Query, d.lang(in.Lang))
 	if err != nil {
 		return nil, SearchCitiesOut{}, err
 	}
@@ -101,23 +100,27 @@ type SearchTripsIn struct {
 
 // TripOut is one bookable connection.
 type TripOut struct {
-	Departure      string  `json:"departure"` // ISO 8601 with offset
-	Arrival        string  `json:"arrival"`
-	Duration       string  `json:"duration"` // e.g. 10h20m
-	TransferType   string  `json:"transfer_type,omitempty"`
-	Direct         bool    `json:"direct"`
-	Price          float64 `json:"price"`
-	Currency       string  `json:"currency"`
-	SeatsRemaining int     `json:"seats_remaining"`
-	Status         string  `json:"status"`
-	BookingURL     string  `json:"booking_url"`
+	Departure        string  `json:"departure"` // ISO 8601 with offset
+	Arrival          string  `json:"arrival"`
+	DepartureStation string  `json:"departure_station,omitempty"`
+	ArrivalStation   string  `json:"arrival_station,omitempty"`
+	Duration         string  `json:"duration"` // e.g. 10h20m
+	TransferType     string  `json:"transfer_type,omitempty"`
+	Direct           bool    `json:"direct"`
+	Price            float64 `json:"price"`
+	SeatsRemaining   int     `json:"seats_remaining"`
+	Status           string  `json:"status"`
 }
 
-// SearchTripsOut is the output of the search_trips tool.
+// SearchTripsOut is the output of the search_trips tool. Currency and
+// BookingURL apply to the whole result set, so they live here rather than
+// repeated on every trip.
 type SearchTripsOut struct {
-	FromCity string    `json:"from_city"`
-	ToCity   string    `json:"to_city"`
-	Trips    []TripOut `json:"trips"`
+	FromCity   string    `json:"from_city"`
+	ToCity     string    `json:"to_city"`
+	Currency   string    `json:"currency"`
+	BookingURL string    `json:"booking_url"`
+	Trips      []TripOut `json:"trips"`
 }
 
 func (d *Deps) searchTrips(ctx context.Context, _ *mcp.CallToolRequest, in SearchTripsIn) (*mcp.CallToolResult, SearchTripsOut, error) {
@@ -145,14 +148,14 @@ func (d *Deps) searchTrips(ctx context.Context, _ *mcp.CallToolRequest, in Searc
 	}
 	currency := strings.ToUpper(cmp.Or(in.Currency, d.Cfg.Currency))
 	if !config.ValidCurrency(currency) {
-		return nil, zero, fmt.Errorf("currency %q: want 3-letter ISO 4217 code", in.Currency)
+		return nil, zero, fmt.Errorf("currency %q: want 3-letter ISO 4217 code", currency)
 	}
 	maxResults := cmp.Or(in.MaxResults, defaultMaxResults)
 	if maxResults < 1 || maxResults > capMaxResults {
 		return nil, zero, fmt.Errorf("max_results must be 1-%d", capMaxResults)
 	}
 
-	lang := cmp.Or(in.Lang, langFromLocale(d.Cfg.Locale))
+	lang := d.lang(in.Lang)
 	fromID, fromName, err := resolveCity(ctx, d.Client, in.From, lang)
 	if err != nil {
 		return nil, zero, fmt.Errorf("from: %w", err)
@@ -177,39 +180,75 @@ func (d *Deps) searchTrips(ctx context.Context, _ *mcp.CallToolRequest, in Searc
 		return nil, zero, err
 	}
 
-	booking := flixbus.BookingURL(params)
-	trips := []TripOut{} // non-nil so empty results marshal as [], matching search_cities
+	total := 0
+	for _, trip := range resp.Trips {
+		total += len(trip.Results)
+	}
+	trips := make([]TripOut, 0, total) // non-nil so empty results marshal as [], matching search_cities
 	for _, trip := range resp.Trips {
 		for _, r := range trip.Results {
-			price := r.Price.Total
-			// platform_fee_in_price_required means checkout charges the fee-inclusive total
-			if resp.PlatformFeeRequired && r.Price.TotalWithPlatformFee > 0 {
-				price = r.Price.TotalWithPlatformFee
+			// a bookable result with no dates or price means the API shape
+			// changed under us — fail loud rather than emit zeros
+			if r.Status == "available" && (r.Departure.Date == "" || r.Arrival.Date == "" || r.Price.Total <= 0) {
+				return nil, zero, fmt.Errorf("unexpected flixbus response shape (empty dates or price on available trip %s) — the API may have changed", r.UID)
+			}
+			price, ok := r.EffectivePrice(resp.PlatformFeeRequired)
+			if !ok {
+				return nil, zero, fmt.Errorf("flixbus requires the platform fee in prices but trip %s has no fee-inclusive total — the API may have changed", r.UID)
 			}
 			trips = append(trips, TripOut{
-				Departure:      r.Departure.Date,
-				Arrival:        r.Arrival.Date,
-				Duration:       fmt.Sprintf("%dh%02dm", r.Duration.Hours, r.Duration.Minutes),
-				TransferType:   r.TransferType,
-				Direct:         strings.EqualFold(r.TransferType, "direct"),
-				Price:          price,
-				Currency:       currency,
-				SeatsRemaining: r.Available.Seats,
-				Status:         r.Status,
-				BookingURL:     booking,
+				Departure:        r.Departure.Date,
+				Arrival:          r.Arrival.Date,
+				DepartureStation: resp.Stations[r.Departure.StationID].Name,
+				ArrivalStation:   resp.Stations[r.Arrival.StationID].Name,
+				Duration:         fmt.Sprintf("%dh%02dm", r.Duration.Hours, r.Duration.Minutes),
+				TransferType:     r.TransferType,
+				Direct:           r.IsDirect(),
+				Price:            price,
+				SeatsRemaining:   r.Available.Seats,
+				Status:           r.Status,
 			})
 		}
 	}
-	// ponytail: lexicographic sort — same route+date shares one UTC offset in practice
-	slices.SortFunc(trips, func(a, b TripOut) int { return cmp.Compare(a.Departure, b.Departure) })
+	slices.SortFunc(trips, compareTrips)
 	if len(trips) > maxResults {
 		trips = trips[:maxResults]
 	}
 
 	out := SearchTripsOut{
-		FromCity: cmp.Or(resp.Cities[fromID].Name, fromName, in.From),
-		ToCity:   cmp.Or(resp.Cities[toID].Name, toName, in.To),
-		Trips:    trips,
+		FromCity:   cmp.Or(resp.Cities[fromID].Name, fromName, in.From),
+		ToCity:     cmp.Or(resp.Cities[toID].Name, toName, in.To),
+		Currency:   currency,
+		BookingURL: flixbus.BookingURL(params),
+		Trips:      trips,
 	}
 	return nil, out, nil
+}
+
+// lang picks the autocomplete language: an explicit per-call override, else
+// the language part of the configured locale.
+func (d *Deps) lang(override string) string {
+	return cmp.Or(override, langFromLocale(d.Cfg.Locale))
+}
+
+// compareTrips orders chronologically by departure instant (offset-aware, so
+// mixed UTC offsets on DST nights still sort correctly), falling back to the
+// raw string if a timestamp doesn't parse; price then arrival break ties so
+// the order — and any max_results cut — is deterministic.
+func compareTrips(a, b TripOut) int {
+	ta, errA := time.Parse(time.RFC3339, a.Departure)
+	tb, errB := time.Parse(time.RFC3339, b.Departure)
+	var c int
+	if errA == nil && errB == nil {
+		c = ta.Compare(tb)
+	} else {
+		c = cmp.Compare(a.Departure, b.Departure)
+	}
+	if c != 0 {
+		return c
+	}
+	if c := cmp.Compare(a.Price, b.Price); c != 0 {
+		return c
+	}
+	return cmp.Compare(a.Arrival, b.Arrival)
 }

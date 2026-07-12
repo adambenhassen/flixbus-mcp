@@ -16,6 +16,10 @@ import (
 
 const userAgent = "flixbus-mcp/0.1"
 
+// maxResponseBytes bounds how much of an API response the decoder will read,
+// so a hostile or broken upstream cannot stream unbounded data into memory.
+const maxResponseBytes = 8 << 20
+
 // Product keys shared by the search API's products param and the shop deeplink.
 const (
 	productAdult    = "adult"
@@ -23,15 +27,16 @@ const (
 	productBikeSlot = "bike_slot"
 )
 
-// Client calls global.api.flixbus.com. Safe for concurrent use.
+// Client calls the FlixBus API at the configured base URL (default
+// global.api.flixbus.com). Safe for concurrent use.
 type Client struct {
 	hc      *http.Client
 	baseURL string
 	apiKey  string
 }
 
-// New returns a Client. baseURL has no trailing slash; apiKey may be empty
-// (the API needs none today — sent as X-API-Key if provided).
+// New returns a Client. Trailing slashes on baseURL are stripped; apiKey may
+// be empty (the API needs none today — sent as X-Api-Key if provided).
 func New(baseURL, apiKey string, timeout time.Duration) *Client {
 	return &Client{
 		hc:      &http.Client{Timeout: timeout},
@@ -53,8 +58,11 @@ func (c *Client) AutocompleteCities(ctx context.Context, query, lang string) ([]
 	return cities, nil
 }
 
-// SearchTrips runs a v4 city-to-city search.
+// SearchTrips runs a v4 city-to-city search. Adults must be at least 1.
 func (c *Client) SearchTrips(ctx context.Context, p SearchParams) (*SearchResponse, error) {
+	if p.Adults < 1 {
+		return nil, fmt.Errorf("adults must be at least 1, got %d", p.Adults)
+	}
 	products := map[string]int{productAdult: p.Adults}
 	if p.Children > 0 {
 		products[productChildren] = p.Children
@@ -69,7 +77,7 @@ func (c *Client) SearchTrips(ctx context.Context, p SearchParams) (*SearchRespon
 	q := url.Values{}
 	q.Set("from_city_id", p.FromCityID)
 	q.Set("to_city_id", p.ToCityID)
-	q.Set("departure_date", p.DepartureDate.Format(DateFormat))
+	q.Set("departure_date", p.DepartureDate.Format(dateFormat))
 	q.Set("products", string(pj))
 	q.Set("currency", p.Currency)
 	q.Set("locale", p.Locale)
@@ -96,33 +104,44 @@ func (c *Client) getJSON(ctx context.Context, path string, q url.Values, out any
 	if err != nil {
 		return err
 	}
-	defer func() {
-		if cerr := resp.Body.Close(); cerr != nil {
-			fmt.Fprintf(os.Stderr, "warn: close response body: %v\n", cerr)
-		}
-	}()
+	defer closeBody(resp)
 	if resp.StatusCode != http.StatusOK {
 		return errorFromResponse(resp)
 	}
-	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxResponseBytes)).Decode(out); err != nil {
 		return fmt.Errorf("decode response: %w", err)
 	}
 	return nil
 }
 
-// BookingURL builds a shop.flixbus.com deeplink (verified URL shape) from the
-// same params as a search, so the linked shop search matches the results.
+// closeBody drains up to 64KiB of leftover body so the connection can be
+// reused (keep-alive), then closes it, warning on stderr since callers have
+// nothing useful to do with either error.
+func closeBody(resp *http.Response) {
+	if _, err := io.Copy(io.Discard, io.LimitReader(resp.Body, 64<<10)); err != nil {
+		fmt.Fprintf(os.Stderr, "warn: drain response body: %v\n", err)
+	}
+	if err := resp.Body.Close(); err != nil {
+		fmt.Fprintf(os.Stderr, "warn: close response body: %v\n", err)
+	}
+}
+
+// BookingURL builds a shop.flixbus.com deeplink from the same params as a
+// search, so the linked shop search matches the results.
 func BookingURL(p SearchParams) string {
 	q := url.Values{}
 	q.Set("departureCity", p.FromCityID)
 	q.Set("arrivalCity", p.ToCityID)
-	q.Set("rideDate", p.DepartureDate.Format(DateFormat))
+	q.Set("rideDate", p.DepartureDate.Format(dateFormat))
 	q.Set(productAdult, strconv.Itoa(p.Adults))
 	if p.Children > 0 {
 		q.Set(productChildren, strconv.Itoa(p.Children))
 	}
 	if p.Bikes > 0 {
 		q.Set(productBikeSlot, strconv.Itoa(p.Bikes))
+	}
+	if p.Currency != "" {
+		q.Set("currency", p.Currency)
 	}
 	return "https://shop.flixbus.com/search?" + q.Encode()
 }
@@ -139,5 +158,9 @@ func errorFromResponse(resp *http.Response) error {
 	if json.Unmarshal(body, &e) == nil && e.Message != "" {
 		return fmt.Errorf("api http %d: %s", resp.StatusCode, e.Message)
 	}
-	return fmt.Errorf("api http %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	msg := strings.TrimSpace(string(body))
+	if msg == "" {
+		msg = http.StatusText(resp.StatusCode)
+	}
+	return fmt.Errorf("api http %d: %s", resp.StatusCode, msg)
 }

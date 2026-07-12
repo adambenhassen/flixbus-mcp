@@ -68,4 +68,25 @@ func TestFromEnvInvalid(t *testing.T) {
 	if _, err := config.FromEnv(); err == nil {
 		t.Error("want error for invalid timeout")
 	}
+	// 0 would silently disable the HTTP timeout entirely
+	t.Setenv("FLIXBUS_TIMEOUT", "0s")
+	if _, err := config.FromEnv(); err == nil {
+		t.Error("want error for zero timeout")
+	}
+	t.Setenv("FLIXBUS_TIMEOUT", "30s")
+	t.Setenv("FLIXBUS_LOCALE", "english")
+	if _, err := config.FromEnv(); err == nil {
+		t.Error("want error for invalid locale")
+	}
+}
+
+func TestFromEnvNormalizesHyphenLocale(t *testing.T) {
+	t.Setenv("FLIXBUS_LOCALE", "en-US")
+	cfg, err := config.FromEnv()
+	if err != nil {
+		t.Fatalf("FromEnv: %v", err)
+	}
+	if cfg.Locale != "en_US" {
+		t.Errorf("Locale = %q, want en_US", cfg.Locale)
+	}
 }

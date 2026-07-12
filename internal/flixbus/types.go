@@ -1,17 +1,19 @@
 package flixbus
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
-// DateFormat is the dotted wire format (DD.MM.YYYY) the search API and the
+// dateFormat is the dotted wire format (DD.MM.YYYY) the search API and the
 // shop's deeplink both expect.
-const DateFormat = "02.01.2006"
+const dateFormat = "02.01.2006"
 
 // City is one autocomplete match.
 type City struct {
 	ID              string   `json:"id"` // UUID — the id the search endpoint wants (never legacy_id)
 	Name            string   `json:"name"`
 	Country         string   `json:"country"`
-	Score           float64  `json:"score"`
 	IsFlixbusCity   bool     `json:"is_flixbus_city"`
 	HasTrainStation bool     `json:"has_train_station"`
 	Location        Location `json:"location"`
@@ -35,11 +37,12 @@ type SearchParams struct {
 	Locale        string
 }
 
-// SearchResponse is the v4 search payload. Results and Cities are keyed maps,
-// not arrays.
+// SearchResponse is the v4 search payload. Trip.Results, Cities and Stations
+// are keyed maps, not arrays.
 type SearchResponse struct {
 	Trips               []Trip              `json:"trips"`
 	Cities              map[string]NamedRef `json:"cities"`
+	Stations            map[string]NamedRef `json:"stations"`
 	PlatformFeeRequired bool                `json:"platform_fee_in_price_required"`
 }
 
@@ -65,6 +68,27 @@ type TripResult struct {
 	Available    Available `json:"available"`
 }
 
+// IsDirect reports whether the connection has no transfer. The uid prefix
+// ("direct:" vs "ic:") is the reliable signal — TransferType is a display
+// label and single-leg rides can carry "Fast" instead of "Direct".
+func (r TripResult) IsDirect() bool {
+	return strings.HasPrefix(r.UID, "direct:")
+}
+
+// EffectivePrice returns the amount due at checkout: the fee-inclusive total
+// when the response requires the platform fee in the price, else the base
+// total. ok is false when the fee is required but the fee-inclusive total is
+// missing — a sign the API shape changed; callers should not trust the value.
+func (r TripResult) EffectivePrice(feeRequired bool) (price float64, ok bool) {
+	if !feeRequired {
+		return r.Price.Total, true
+	}
+	if r.Price.TotalWithPlatformFee > 0 {
+		return r.Price.TotalWithPlatformFee, true
+	}
+	return r.Price.Total, false
+}
+
 // Stop is one end of a connection.
 type Stop struct {
 	Date      string `json:"date"` // ISO 8601 with offset, passed through verbatim
@@ -80,7 +104,8 @@ type Duration struct {
 
 // Price in the requested currency. Total is the fare without platform fee;
 // TotalWithPlatformFee is the amount due at checkout when
-// SearchResponse.PlatformFeeRequired is set.
+// SearchResponse.PlatformFeeRequired is set. Values are pass-through only —
+// convert before doing arithmetic on them.
 type Price struct {
 	Total                float64 `json:"total"`
 	Original             float64 `json:"original"`

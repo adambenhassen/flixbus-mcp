@@ -5,4 +5,5 @@ var (
 	ResolveCity         = resolveCity
 	SearchCitiesHandler = (*Deps).searchCities
 	SearchTripsHandler  = (*Deps).searchTrips
+	LangFromLocale      = langFromLocale
 )

@@ -48,21 +48,29 @@ func run() error {
 
 	switch *transport {
 	case "stdio":
-		return server.Run(ctx, &mcp.StdioTransport{})
+		err := server.Run(ctx, &mcp.StdioTransport{})
+		if errors.Is(err, context.Canceled) && ctx.Err() != nil {
+			return nil // SIGINT/SIGTERM is a normal shutdown, not a failure
+		}
+		return err
 	case "http":
 		handler := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return server }, nil)
 		srv := &http.Server{Addr: *addr, Handler: handler, ReadHeaderTimeout: 10 * time.Second}
+		shutdownErr := make(chan error, 1)
 		go func() {
 			<-ctx.Done()
 			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
-			if err := srv.Shutdown(shutdownCtx); err != nil {
-				fmt.Fprintf(os.Stderr, "warn: shutdown: %v\n", err)
-			}
+			shutdownErr <- srv.Shutdown(shutdownCtx)
 		}()
 		log.Printf("flixbus-mcp %s listening on %s", version, *addr)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			return err
+		}
+		if ctx.Err() != nil {
+			if err := <-shutdownErr; err != nil {
+				return fmt.Errorf("shutdown: %w", err)
+			}
 		}
 		return nil
 	default:

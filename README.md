@@ -11,7 +11,7 @@ Find FlixBus cities and their ids.
 | Input | Type | Description |
 |-------|------|-------------|
 | `query` | string | city name or prefix, e.g. `Berlin` (required) |
-| `lang` | string | ISO 639-1 language for results, default `en` |
+| `lang` | string | ISO 639-1 language for results, defaults to the server locale's language (`en` unless `FLIXBUS_LOCALE` is set) |
 
 Returns `cities`: id (UUID), name, country, latitude/longitude, `is_flixbus_city`, `has_train_station`.
 
@@ -26,11 +26,12 @@ Search trips between two cities on a date.
 | `date` | string | departure date, `YYYY-MM-DD` (required) |
 | `adults` | int | adult passengers, default 1 |
 | `children` | int | child passengers, default 0 |
-| `bikes` | int | bike slots, default 0 |
-| `currency` | string | ISO 4217 price currency, default `EUR` |
-| `max_results` | int | maximum trips returned, default 20 |
+| `bikes` | int | bike slots, default 0 (max 9 per category) |
+| `currency` | string | ISO 4217 price currency, defaults to the server currency (`EUR` unless `FLIXBUS_CURRENCY` is set) |
+| `lang` | string | ISO 639-1 language for resolving city names, defaults to the server locale's language |
+| `max_results` | int | maximum trips returned, default 20 (max 100) |
 
-City names are resolved automatically; if a name is ambiguous the error lists candidate ids. Returns trips sorted by departure: times (ISO 8601), duration, transfer type, price (checkout total, including FlixBus's platform fee when it is mandatory), seats remaining, status, and a `shop.flixbus.com` booking link carrying the full passenger selection.
+City names are resolved automatically; if a name is ambiguous the error lists candidate ids. Returns the currency, a `shop.flixbus.com` booking link carrying the full passenger selection, and trips in chronological departure order: times (ISO 8601), station names, duration, transfer type, price (checkout total, including FlixBus's platform fee when it is mandatory), seats remaining, and status.
 
 ## Run
 
@@ -54,7 +55,10 @@ Client config (stdio):
 ```json
 {
   "mcpServers": {
-    "flixbus": { "command": "/path/to/flixbus-mcp" }
+    "flixbus": {
+      "command": "/path/to/flixbus-mcp",
+      "args": ["-transport", "stdio"]
+    }
   }
 }
 ```
@@ -65,9 +69,8 @@ Client config (stdio):
 |---------|---------|-------------|
 | `FLIXBUS_CURRENCY` | `EUR` | default price currency |
 | `FLIXBUS_LOCALE` | `en_US` | locale for search results |
-| `FLIXBUS_TIMEOUT` | `30s` | HTTP client timeout |
+| `FLIXBUS_TIMEOUT` | `30s` | HTTP client timeout (must be positive) |
 | `FLIXBUS_API_KEY` | _(empty)_ | optional, sent as `X-Api-Key` if set |
-| `FLIXBUS_BASE_URL` | `https://global.api.flixbus.com` | API base URL (tests) |
 
 ## Notes
 
