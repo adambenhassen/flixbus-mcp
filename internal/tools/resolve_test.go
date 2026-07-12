@@ -1,4 +1,4 @@
-package tools
+package tools_test
 
 import (
 	"context"
@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/adambenhassen/flixbus-mcp/internal/flixbus"
+	"github.com/adambenhassen/flixbus-mcp/internal/tools"
 )
 
 const berlinUUID = "40d8f682-8646-11e6-9066-549f350fcb0c"
@@ -28,12 +29,15 @@ func autocompleteStub(t *testing.T, body string) *flixbus.Client {
 func TestResolveCityUUIDPassthrough(t *testing.T) {
 	// no server needed: UUID must not hit the network
 	c := flixbus.New("http://127.0.0.1:1", "", time.Second)
-	got, err := resolveCity(context.Background(), c, berlinUUID)
+	id, name, err := tools.ResolveCity(context.Background(), c, berlinUUID, "en")
 	if err != nil {
 		t.Fatalf("resolveCity: %v", err)
 	}
-	if got.ID != berlinUUID {
-		t.Errorf("ID = %q", got.ID)
+	if id != berlinUUID {
+		t.Errorf("id = %q", id)
+	}
+	if name != "" {
+		t.Errorf("name = %q, want empty on UUID path", name)
 	}
 }
 
@@ -42,12 +46,12 @@ func TestResolveCityExactMatchWins(t *testing.T) {
 	  {"id":"uuid-suburb","name":"Berlin Wannsee","country":"de","score":90,"is_flixbus_city":true},
 	  {"id":"`+berlinUUID+`","name":"Berlin","country":"de","score":60,"is_flixbus_city":true}
 	]`)
-	got, err := resolveCity(context.Background(), c, "berlin")
+	id, name, err := tools.ResolveCity(context.Background(), c, "berlin", "en")
 	if err != nil {
 		t.Fatalf("resolveCity: %v", err)
 	}
-	if got.ID != berlinUUID {
-		t.Errorf("resolved %q (%s), want exact match Berlin", got.Name, got.ID)
+	if id != berlinUUID || name != "Berlin" {
+		t.Errorf("resolved %q (%s), want exact match Berlin", name, id)
 	}
 }
 
@@ -55,12 +59,12 @@ func TestResolveCitySingleResult(t *testing.T) {
 	c := autocompleteStub(t, `[
 	  {"id":"uuid-x","name":"Villach","country":"at","score":50,"is_flixbus_city":true}
 	]`)
-	got, err := resolveCity(context.Background(), c, "villa")
+	id, name, err := tools.ResolveCity(context.Background(), c, "villa", "en")
 	if err != nil {
 		t.Fatalf("resolveCity: %v", err)
 	}
-	if got.ID != "uuid-x" {
-		t.Errorf("ID = %q", got.ID)
+	if id != "uuid-x" || name != "Villach" {
+		t.Errorf("id = %q, name = %q", id, name)
 	}
 }
 
@@ -69,7 +73,7 @@ func TestResolveCityAmbiguous(t *testing.T) {
 	  {"id":"uuid-a","name":"Springfield IL","country":"us","score":50,"is_flixbus_city":true},
 	  {"id":"uuid-b","name":"Springfield MA","country":"us","score":49,"is_flixbus_city":true}
 	]`)
-	_, err := resolveCity(context.Background(), c, "springfield")
+	_, _, err := tools.ResolveCity(context.Background(), c, "springfield", "en")
 	if err == nil {
 		t.Fatal("want ambiguity error")
 	}
@@ -80,7 +84,7 @@ func TestResolveCityAmbiguous(t *testing.T) {
 
 func TestResolveCityNoMatch(t *testing.T) {
 	c := autocompleteStub(t, `[]`)
-	_, err := resolveCity(context.Background(), c, "atlantis")
+	_, _, err := tools.ResolveCity(context.Background(), c, "atlantis", "en")
 	if err == nil || !strings.Contains(err.Error(), "atlantis") {
 		t.Fatalf("want no-match error naming the query, got: %v", err)
 	}
@@ -91,11 +95,11 @@ func TestResolveCityFiltersNonFlixbus(t *testing.T) {
 	  {"id":"uuid-no","name":"Nowhere","country":"de","score":90,"is_flixbus_city":false},
 	  {"id":"uuid-yes","name":"Somewhere","country":"de","score":50,"is_flixbus_city":true}
 	]`)
-	got, err := resolveCity(context.Background(), c, "where")
+	id, _, err := tools.ResolveCity(context.Background(), c, "where", "en")
 	if err != nil {
 		t.Fatalf("resolveCity: %v", err)
 	}
-	if got.ID != "uuid-yes" {
-		t.Errorf("ID = %q, want the is_flixbus_city one", got.ID)
+	if id != "uuid-yes" {
+		t.Errorf("id = %q, want the is_flixbus_city one", id)
 	}
 }

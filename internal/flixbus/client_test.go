@@ -1,7 +1,9 @@
-package flixbus
+package flixbus_test
 
 import (
 	"context"
+
+	"github.com/adambenhassen/flixbus-mcp/internal/flixbus"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -37,7 +39,7 @@ func fixtureServer(t *testing.T, path, fixture string, wantQuery map[string]stri
 func TestAutocompleteCities(t *testing.T) {
 	srv := fixtureServer(t, "/search/autocomplete/cities",
 		"testdata/autocomplete_berlin.json", map[string]string{"q": "berlin", "lang": "en"})
-	c := New(srv.URL, "", 5*time.Second)
+	c := flixbus.New(srv.URL, "", 5*time.Second)
 	cities, err := c.AutocompleteCities(context.Background(), "berlin", "en")
 	if err != nil {
 		t.Fatalf("AutocompleteCities: %v", err)
@@ -65,11 +67,11 @@ func TestSearchTrips(t *testing.T) {
 			"locale":         "en_US",
 			"search_by":      "cities",
 		})
-	c := New(srv.URL, "", 5*time.Second)
-	resp, err := c.SearchTrips(context.Background(), SearchParams{
+	c := flixbus.New(srv.URL, "", 5*time.Second)
+	resp, err := c.SearchTrips(context.Background(), flixbus.SearchParams{
 		FromCityID:    "40d8f682-8646-11e6-9066-549f350fcb0c",
 		ToCityID:      "40d901a5-8646-11e6-9066-549f350fcb0c",
-		DepartureDate: "20.07.2026",
+		DepartureDate: time.Date(2026, 7, 20, 0, 0, 0, 0, time.UTC),
 		Adults:        1,
 		Currency:      "EUR",
 		Locale:        "en_US",
@@ -104,8 +106,8 @@ func TestAPIError(t *testing.T) {
 		}
 	}))
 	t.Cleanup(srv.Close)
-	c := New(srv.URL, "", 5*time.Second)
-	_, err := c.SearchTrips(context.Background(), SearchParams{Adults: 1})
+	c := flixbus.New(srv.URL, "", 5*time.Second)
+	_, err := c.SearchTrips(context.Background(), flixbus.SearchParams{Adults: 1})
 	if err == nil {
 		t.Fatal("want error on 400")
 	}

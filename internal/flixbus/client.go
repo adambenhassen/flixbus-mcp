@@ -61,7 +61,7 @@ func (c *Client) SearchTrips(ctx context.Context, p SearchParams) (*SearchRespon
 	q := url.Values{}
 	q.Set("from_city_id", p.FromCityID)
 	q.Set("to_city_id", p.ToCityID)
-	q.Set("departure_date", p.DepartureDate)
+	q.Set("departure_date", p.DepartureDate.Format(DateFormat))
 	q.Set("products", string(pj))
 	q.Set("currency", p.Currency)
 	q.Set("locale", p.Locale)
@@ -102,7 +102,7 @@ func (c *Client) getJSON(ctx context.Context, path string, q url.Values, out any
 	return nil
 }
 
-// apiError extracts the API's own {code,message} body when present.
+// apiError extracts the API's own error message body when present.
 func apiError(resp *http.Response) error {
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 4096))
 	if err != nil {

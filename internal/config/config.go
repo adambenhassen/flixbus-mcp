@@ -26,7 +26,7 @@ func FromEnv() (Config, error) {
 		APIKey:   os.Getenv("FLIXBUS_API_KEY"),
 	}
 	if !ValidCurrency(cfg.Currency) {
-		return Config{}, fmt.Errorf("FLIXBUS_CURRENCY %q: must be 3 ASCII letters", cfg.Currency)
+		return Config{}, fmt.Errorf("FLIXBUS_CURRENCY %q: must be 3 uppercase ASCII letters", cfg.Currency)
 	}
 	timeout, err := time.ParseDuration(getenv("FLIXBUS_TIMEOUT", "30s"))
 	if err != nil {
@@ -36,7 +36,8 @@ func FromEnv() (Config, error) {
 	return cfg, nil
 }
 
-// ValidCurrency reports whether s is a plausible ISO 4217 code (3 ASCII letters).
+// ValidCurrency reports whether s is a plausible ISO 4217 code (3 uppercase
+// ASCII letters). Callers uppercase user input before validating.
 func ValidCurrency(s string) bool {
 	if len(s) != 3 {
 		return false

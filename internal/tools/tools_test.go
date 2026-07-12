@@ -1,4 +1,4 @@
-package tools
+package tools_test
 
 import (
 	"context"
@@ -11,6 +11,7 @@ import (
 
 	"github.com/adambenhassen/flixbus-mcp/internal/config"
 	"github.com/adambenhassen/flixbus-mcp/internal/flixbus"
+	"github.com/adambenhassen/flixbus-mcp/internal/tools"
 )
 
 const munichUUID = "40d901a5-8646-11e6-9066-549f350fcb0c"
@@ -42,27 +43,27 @@ func twoEndpointStub(t *testing.T) *flixbus.Client {
 	return flixbus.New(srv.URL, "", 5*time.Second)
 }
 
-func testDeps(t *testing.T) *Deps {
+func testDeps(t *testing.T) *tools.Deps {
 	t.Helper()
-	return &Deps{Client: twoEndpointStub(t), Cfg: config.Config{Currency: "EUR", Locale: "en_US"}}
+	return &tools.Deps{Client: twoEndpointStub(t), Cfg: config.Config{Currency: "EUR", Locale: "en_US"}}
 }
 
 func TestSearchTripsValidation(t *testing.T) {
 	d := testDeps(t)
 	cases := []struct {
 		name string
-		in   SearchTripsIn
+		in   tools.SearchTripsIn
 		want string // substring of the expected error
 	}{
-		{"missing from", SearchTripsIn{To: "Munich", Date: "2026-07-20"}, "from"},
-		{"missing date", SearchTripsIn{From: "Berlin", To: "Munich"}, "date"},
-		{"bad date format", SearchTripsIn{From: "Berlin", To: "Munich", Date: "20.07.2026"}, "yyyy-mm-dd"},
-		{"bad currency", SearchTripsIn{From: "Berlin", To: "Munich", Date: "2026-07-20", Currency: "euros"}, "currency"},
-		{"negative adults", SearchTripsIn{From: "Berlin", To: "Munich", Date: "2026-07-20", Adults: -1}, "adults"},
+		{"missing from", tools.SearchTripsIn{To: "Munich", Date: "2026-07-20"}, "from"},
+		{"missing date", tools.SearchTripsIn{From: "Berlin", To: "Munich"}, "date"},
+		{"bad date format", tools.SearchTripsIn{From: "Berlin", To: "Munich", Date: "20.07.2026"}, "yyyy-mm-dd"},
+		{"bad currency", tools.SearchTripsIn{From: "Berlin", To: "Munich", Date: "2026-07-20", Currency: "euros"}, "currency"},
+		{"negative adults", tools.SearchTripsIn{From: "Berlin", To: "Munich", Date: "2026-07-20", Adults: -1}, "adults"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			_, _, err := d.searchTrips(context.Background(), nil, tc.in)
+			_, _, err := tools.SearchTripsHandler(d, context.Background(), nil, tc.in)
 			if err == nil || !strings.Contains(strings.ToLower(err.Error()), tc.want) {
 				t.Errorf("err = %v, want mention of %q", err, tc.want)
 			}
@@ -72,7 +73,7 @@ func TestSearchTripsValidation(t *testing.T) {
 
 func TestSearchTripsHappyPath(t *testing.T) {
 	d := testDeps(t)
-	_, out, err := d.searchTrips(context.Background(), nil, SearchTripsIn{
+	_, out, err := tools.SearchTripsHandler(d, context.Background(), nil, tools.SearchTripsIn{
 		From: "Berlin", To: munichUUID, Date: "2026-07-20",
 	})
 	if err != nil {
@@ -109,7 +110,7 @@ func TestSearchTripsHappyPath(t *testing.T) {
 
 func TestSearchTripsBookingURLKeepsPassengers(t *testing.T) {
 	d := testDeps(t)
-	_, out, err := d.searchTrips(context.Background(), nil, SearchTripsIn{
+	_, out, err := tools.SearchTripsHandler(d, context.Background(), nil, tools.SearchTripsIn{
 		From: "Berlin", To: munichUUID, Date: "2026-07-20",
 		Adults: 2, Children: 1, Bikes: 1, MaxResults: 1,
 	})
@@ -126,7 +127,7 @@ func TestSearchTripsBookingURLKeepsPassengers(t *testing.T) {
 
 func TestSearchTripsMaxResults(t *testing.T) {
 	d := testDeps(t)
-	_, out, err := d.searchTrips(context.Background(), nil, SearchTripsIn{
+	_, out, err := tools.SearchTripsHandler(d, context.Background(), nil, tools.SearchTripsIn{
 		From: "Berlin", To: munichUUID, Date: "2026-07-20", MaxResults: 1,
 	})
 	if err != nil {
@@ -139,14 +140,14 @@ func TestSearchTripsMaxResults(t *testing.T) {
 
 func TestSearchCities(t *testing.T) {
 	d := testDeps(t)
-	_, out, err := d.searchCities(context.Background(), nil, SearchCitiesIn{Query: "berlin"})
+	_, out, err := tools.SearchCitiesHandler(d, context.Background(), nil, tools.SearchCitiesIn{Query: "berlin"})
 	if err != nil {
 		t.Fatalf("searchCities: %v", err)
 	}
 	if len(out.Cities) == 0 || out.Cities[0].ID != berlinUUID {
 		t.Errorf("cities = %+v", out.Cities)
 	}
-	if _, _, err := d.searchCities(context.Background(), nil, SearchCitiesIn{}); err == nil {
+	if _, _, err := tools.SearchCitiesHandler(d, context.Background(), nil, tools.SearchCitiesIn{}); err == nil {
 		t.Error("want error for empty query")
 	}
 }

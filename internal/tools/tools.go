@@ -129,12 +129,13 @@ func (d *Deps) searchTrips(ctx context.Context, _ *mcp.CallToolRequest, in Searc
 	if strings.TrimSpace(in.To) == "" {
 		return nil, zero, errors.New("to is required")
 	}
-	if in.Date == "" {
+	date := strings.TrimSpace(in.Date)
+	if date == "" {
 		return nil, zero, errors.New("date is required")
 	}
-	day, err := time.Parse("2006-01-02", in.Date)
+	day, err := time.Parse("2006-01-02", date)
 	if err != nil {
-		return nil, zero, fmt.Errorf("date %q: want YYYY-MM-DD", in.Date)
+		return nil, zero, fmt.Errorf("date %q: want YYYY-MM-DD: %w", in.Date, err)
 	}
 	adults := cmp.Or(in.Adults, 1)
 	if adults < 1 || adults > maxPassengers {
@@ -152,20 +153,20 @@ func (d *Deps) searchTrips(ctx context.Context, _ *mcp.CallToolRequest, in Searc
 		return nil, zero, fmt.Errorf("max_results must be 1-%d", capMaxResults)
 	}
 
-	from, err := resolveCity(ctx, d.Client, in.From)
+	lang := langFromLocale(d.Cfg.Locale)
+	fromID, fromName, err := resolveCity(ctx, d.Client, in.From, lang)
 	if err != nil {
 		return nil, zero, fmt.Errorf("from: %w", err)
 	}
-	to, err := resolveCity(ctx, d.Client, in.To)
+	toID, toName, err := resolveCity(ctx, d.Client, in.To, lang)
 	if err != nil {
 		return nil, zero, fmt.Errorf("to: %w", err)
 	}
 
-	apiDate := day.Format("02.01.2006") // FlixBus wants DD.MM.YYYY
 	resp, err := d.Client.SearchTrips(ctx, flixbus.SearchParams{
-		FromCityID:    from.ID,
-		ToCityID:      to.ID,
-		DepartureDate: apiDate,
+		FromCityID:    fromID,
+		ToCityID:      toID,
+		DepartureDate: day,
 		Adults:        adults,
 		Children:      in.Children,
 		Bikes:         in.Bikes,
@@ -176,8 +177,8 @@ func (d *Deps) searchTrips(ctx context.Context, _ *mcp.CallToolRequest, in Searc
 		return nil, zero, err
 	}
 
-	booking := bookingURL(from.ID, to.ID, apiDate, adults, in.Children, in.Bikes)
-	var trips []TripOut
+	booking := bookingURL(fromID, toID, day, adults, in.Children, in.Bikes)
+	trips := []TripOut{} // non-nil so empty results marshal as [], matching search_cities
 	for _, trip := range resp.Trips {
 		for _, r := range trip.Results {
 			price := r.Price.Total
@@ -206,8 +207,8 @@ func (d *Deps) searchTrips(ctx context.Context, _ *mcp.CallToolRequest, in Searc
 	}
 
 	out := SearchTripsOut{
-		FromCity: cmp.Or(resp.Cities[from.ID].Name, from.Name, in.From),
-		ToCity:   cmp.Or(resp.Cities[to.ID].Name, to.Name, in.To),
+		FromCity: cmp.Or(resp.Cities[fromID].Name, fromName, in.From),
+		ToCity:   cmp.Or(resp.Cities[toID].Name, toName, in.To),
 		Trips:    trips,
 	}
 	return nil, out, nil
@@ -215,11 +216,11 @@ func (d *Deps) searchTrips(ctx context.Context, _ *mcp.CallToolRequest, in Searc
 
 // bookingURL builds a shop.flixbus.com deeplink (verified URL shape) carrying
 // the full passenger/product selection so the linked search matches the results.
-func bookingURL(fromID, toID, apiDate string, adults, children, bikes int) string {
+func bookingURL(fromID, toID string, day time.Time, adults, children, bikes int) string {
 	q := url.Values{}
 	q.Set("departureCity", fromID)
 	q.Set("arrivalCity", toID)
-	q.Set("rideDate", apiDate)
+	q.Set("rideDate", day.Format(flixbus.DateFormat))
 	q.Set("adult", strconv.Itoa(adults))
 	if children > 0 {
 		q.Set("children", strconv.Itoa(children))

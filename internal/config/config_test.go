@@ -1,12 +1,22 @@
-package config
+package config_test
 
 import (
 	"testing"
 	"time"
+
+	"github.com/adambenhassen/flixbus-mcp/internal/config"
 )
 
 func TestFromEnvDefaults(t *testing.T) {
-	cfg, err := FromEnv()
+	// getenv treats empty as unset, so this pins defaults even when the
+	// ambient environment exports FLIXBUS_* vars
+	for _, k := range []string{
+		"FLIXBUS_CURRENCY", "FLIXBUS_LOCALE", "FLIXBUS_BASE_URL",
+		"FLIXBUS_API_KEY", "FLIXBUS_TIMEOUT",
+	} {
+		t.Setenv(k, "")
+	}
+	cfg, err := config.FromEnv()
 	if err != nil {
 		t.Fatalf("FromEnv: %v", err)
 	}
@@ -33,7 +43,7 @@ func TestFromEnvOverrides(t *testing.T) {
 	t.Setenv("FLIXBUS_TIMEOUT", "5s")
 	t.Setenv("FLIXBUS_API_KEY", "k")
 	t.Setenv("FLIXBUS_BASE_URL", "http://localhost:1")
-	cfg, err := FromEnv()
+	cfg, err := config.FromEnv()
 	if err != nil {
 		t.Fatalf("FromEnv: %v", err)
 	}
@@ -50,12 +60,12 @@ func TestFromEnvOverrides(t *testing.T) {
 
 func TestFromEnvInvalid(t *testing.T) {
 	t.Setenv("FLIXBUS_CURRENCY", "EU€")
-	if _, err := FromEnv(); err == nil {
+	if _, err := config.FromEnv(); err == nil {
 		t.Error("want error for invalid currency")
 	}
 	t.Setenv("FLIXBUS_CURRENCY", "EUR")
 	t.Setenv("FLIXBUS_TIMEOUT", "banana")
-	if _, err := FromEnv(); err == nil {
+	if _, err := config.FromEnv(); err == nil {
 		t.Error("want error for invalid timeout")
 	}
 }

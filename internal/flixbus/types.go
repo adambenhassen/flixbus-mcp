@@ -1,5 +1,11 @@
 package flixbus
 
+import "time"
+
+// DateFormat is the dotted wire format (DD.MM.YYYY) the search API and the
+// shop's deeplink both expect.
+const DateFormat = "02.01.2006"
+
 // City is one autocomplete match.
 type City struct {
 	ID              string   `json:"id"` // UUID — the id the search endpoint wants (never legacy_id)
@@ -17,12 +23,11 @@ type Location struct {
 	Lon float64 `json:"lon"`
 }
 
-// SearchParams are the inputs for SearchTrips. DepartureDate must already be
-// in the API's DD.MM.YYYY format.
+// SearchParams are the inputs for SearchTrips.
 type SearchParams struct {
 	FromCityID    string
 	ToCityID      string
-	DepartureDate string
+	DepartureDate time.Time
 	Adults        int
 	Children      int
 	Bikes         int
