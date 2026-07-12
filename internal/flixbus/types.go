@@ -33,8 +33,9 @@ type SearchParams struct {
 // SearchResponse is the v4 search payload. Results and Cities are keyed maps,
 // not arrays.
 type SearchResponse struct {
-	Trips  []Trip              `json:"trips"`
-	Cities map[string]NamedRef `json:"cities"`
+	Trips               []Trip              `json:"trips"`
+	Cities              map[string]NamedRef `json:"cities"`
+	PlatformFeeRequired bool                `json:"platform_fee_in_price_required"`
 }
 
 // NamedRef resolves a UUID key to a display name.
@@ -72,10 +73,13 @@ type Duration struct {
 	Minutes int `json:"minutes"`
 }
 
-// Price in the requested currency. Total is the fare without platform fee.
+// Price in the requested currency. Total is the fare without platform fee;
+// TotalWithPlatformFee is the amount due at checkout when
+// SearchResponse.PlatformFeeRequired is set.
 type Price struct {
-	Total    float64 `json:"total"`
-	Original float64 `json:"original"`
+	Total                float64 `json:"total"`
+	Original             float64 `json:"original"`
+	TotalWithPlatformFee float64 `json:"total_with_platform_fee"`
 }
 
 // Available capacity on the connection.

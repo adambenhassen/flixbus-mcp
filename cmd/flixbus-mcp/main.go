@@ -31,7 +31,7 @@ func main() {
 
 func run() error {
 	transport := flag.String("transport", "stdio", "transport: stdio or http")
-	addr := flag.String("addr", ":8748", "listen address for the http transport")
+	addr := flag.String("addr", "127.0.0.1:8748", "listen address for the http transport (loopback by default; pass :8748 to expose)")
 	flag.Parse()
 
 	cfg, err := config.FromEnv()

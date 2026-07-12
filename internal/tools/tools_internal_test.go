@@ -97,8 +97,30 @@ func TestSearchTripsHappyPath(t *testing.T) {
 		!strings.Contains(first.BookingURL, "rideDate=20.07.2026") {
 		t.Errorf("BookingURL = %q", first.BookingURL)
 	}
+	// fixture declares platform_fee_in_price_required; first trip's checkout
+	// total is 78.97 (total 77.98 + fee) — the fee-inclusive price must win
+	if first.Price != 78.97 {
+		t.Errorf("Price = %v, want fee-inclusive 78.97", first.Price)
+	}
 	if out.FromCity == "" || out.ToCity == "" {
 		t.Errorf("from/to city names not resolved: %+v", out)
+	}
+}
+
+func TestSearchTripsBookingURLKeepsPassengers(t *testing.T) {
+	d := testDeps(t)
+	_, out, err := d.searchTrips(context.Background(), nil, SearchTripsIn{
+		From: "Berlin", To: munichUUID, Date: "2026-07-20",
+		Adults: 2, Children: 1, Bikes: 1, MaxResults: 1,
+	})
+	if err != nil {
+		t.Fatalf("searchTrips: %v", err)
+	}
+	u := out.Trips[0].BookingURL
+	for _, want := range []string{"adult=2", "children=1", "bike_slot=1"} {
+		if !strings.Contains(u, want) {
+			t.Errorf("BookingURL %q missing %q", u, want)
+		}
 	}
 }
 

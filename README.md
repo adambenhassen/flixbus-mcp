@@ -30,7 +30,7 @@ Search trips between two cities on a date.
 | `currency` | string | ISO 4217 price currency, default `EUR` |
 | `max_results` | int | maximum trips returned, default 20 |
 
-City names are resolved automatically; if a name is ambiguous the error lists candidate ids. Returns trips sorted by departure: times (ISO 8601), duration, transfer type, price, seats remaining, status, and a `shop.flixbus.com` booking link.
+City names are resolved automatically; if a name is ambiguous the error lists candidate ids. Returns trips sorted by departure: times (ISO 8601), duration, transfer type, price (checkout total, including FlixBus's platform fee when it is mandatory), seats remaining, status, and a `shop.flixbus.com` booking link carrying the full passenger selection.
 
 ## Run
 
@@ -40,8 +40,10 @@ go build ./cmd/flixbus-mcp
 # stdio (default)
 ./flixbus-mcp
 
-# http
-./flixbus-mcp -transport http -addr :8748
+# http (binds loopback by default; the server has no auth of its own,
+# so only expose it on networks you trust or behind a reverse proxy)
+./flixbus-mcp -transport http
+./flixbus-mcp -transport http -addr :8748   # all interfaces
 
 # docker
 docker run -p 8748:8748 ghcr.io/adambenhassen/flixbus-mcp

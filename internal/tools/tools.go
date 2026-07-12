@@ -176,17 +176,22 @@ func (d *Deps) searchTrips(ctx context.Context, _ *mcp.CallToolRequest, in Searc
 		return nil, zero, err
 	}
 
-	booking := bookingURL(from.ID, to.ID, apiDate, adults)
+	booking := bookingURL(from.ID, to.ID, apiDate, adults, in.Children, in.Bikes)
 	var trips []TripOut
 	for _, trip := range resp.Trips {
 		for _, r := range trip.Results {
+			price := r.Price.Total
+			// platform_fee_in_price_required means checkout charges the fee-inclusive total
+			if resp.PlatformFeeRequired && r.Price.TotalWithPlatformFee > 0 {
+				price = r.Price.TotalWithPlatformFee
+			}
 			trips = append(trips, TripOut{
 				Departure:      r.Departure.Date,
 				Arrival:        r.Arrival.Date,
 				Duration:       fmt.Sprintf("%dh%02dm", r.Duration.Hours, r.Duration.Minutes),
 				TransferType:   r.TransferType,
 				Direct:         strings.EqualFold(r.TransferType, "direct"),
-				Price:          r.Price.Total,
+				Price:          price,
 				Currency:       currency,
 				SeatsRemaining: r.Available.Seats,
 				Status:         r.Status,
@@ -208,12 +213,19 @@ func (d *Deps) searchTrips(ctx context.Context, _ *mcp.CallToolRequest, in Searc
 	return nil, out, nil
 }
 
-// bookingURL builds a shop.flixbus.com deeplink (verified URL shape).
-func bookingURL(fromID, toID, apiDate string, adults int) string {
+// bookingURL builds a shop.flixbus.com deeplink (verified URL shape) carrying
+// the full passenger/product selection so the linked search matches the results.
+func bookingURL(fromID, toID, apiDate string, adults, children, bikes int) string {
 	q := url.Values{}
 	q.Set("departureCity", fromID)
 	q.Set("arrivalCity", toID)
 	q.Set("rideDate", apiDate)
 	q.Set("adult", strconv.Itoa(adults))
+	if children > 0 {
+		q.Set("children", strconv.Itoa(children))
+	}
+	if bikes > 0 {
+		q.Set("bike_slot", strconv.Itoa(bikes))
+	}
 	return "https://shop.flixbus.com/search?" + q.Encode()
 }
