@@ -9,6 +9,7 @@ package smoke_test
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -26,20 +27,28 @@ import (
 var binary string
 
 func TestMain(m *testing.M) {
+	os.Exit(testMain(m)) // os.Exit skips defers, so the work lives in testMain
+}
+
+func testMain(m *testing.M) int {
 	dir, err := os.MkdirTemp("", "flixbus-smoke")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "mkdtemp: %v\n", err)
-		os.Exit(1)
+		return 1
 	}
-	defer os.RemoveAll(dir)
+	defer func() {
+		if err := os.RemoveAll(dir); err != nil {
+			fmt.Fprintf(os.Stderr, "cleanup: %v\n", err)
+		}
+	}()
 	binary = filepath.Join(dir, "flixbus-mcp")
-	build := exec.Command("go", "build", "-o", binary, "../cmd/flixbus-mcp")
+	build := exec.CommandContext(context.Background(), "go", "build", "-o", binary, "../cmd/flixbus-mcp") //nolint:gosec // builds our own package into a temp dir
 	build.Stderr = os.Stderr
 	if err := build.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "build: %v\n", err)
-		os.Exit(1)
+		return 1
 	}
-	os.Exit(m.Run())
+	return m.Run()
 }
 
 // rpc frames one JSON-RPC message per line, the stdio transport's wire format.
@@ -52,7 +61,7 @@ func rpc(id int, method string, params string) string {
 }
 
 func TestStdioLiveSearch(t *testing.T) {
-	cmd := exec.Command(binary, "-transport", "stdio")
+	cmd := exec.CommandContext(t.Context(), binary, "-transport", "stdio")
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		t.Fatalf("stdin pipe: %v", err)
@@ -118,7 +127,7 @@ func TestStdioLiveSearch(t *testing.T) {
 	defer deadline.Stop()
 
 	sawTools, sawTrips := false, false
-	for !(sawTools && sawTrips) && sc.Scan() {
+	for (!sawTools || !sawTrips) && sc.Scan() {
 		line := sc.Bytes()
 		var probe struct {
 			ID int `json:"id"`
@@ -184,8 +193,8 @@ func TestStdioLiveSearch(t *testing.T) {
 func TestHTTPServesWithStdinClosed(t *testing.T) {
 	port := freePort(t)
 	addr := fmt.Sprintf("127.0.0.1:%d", port)
-	cmd := exec.Command(binary, "-transport", "http", "-addr", addr)
-	cmd.Stdin = nil // stdin reads EOF immediately — the daemon must not care
+	cmd := exec.CommandContext(t.Context(), binary, "-transport", "http", "-addr", addr) //nolint:gosec // runs the binary this test just built
+	cmd.Stdin = nil                                                                      // stdin reads EOF immediately — the daemon must not care
 	cmd.Stderr = io.Discard
 	if err := cmd.Start(); err != nil {
 		t.Fatalf("start: %v", err)
@@ -205,7 +214,7 @@ func TestHTTPServesWithStdinClosed(t *testing.T) {
 	var resp *http.Response
 	var err error
 	for range 40 { // wait for the listener, up to ~10s
-		req, reqErr := http.NewRequest(http.MethodPost, "http://"+addr+"/", strings.NewReader(body))
+		req, reqErr := http.NewRequestWithContext(t.Context(), http.MethodPost, "http://"+addr+"/", strings.NewReader(body))
 		if reqErr != nil {
 			t.Fatalf("new request: %v", reqErr)
 		}
@@ -240,11 +249,15 @@ func TestHTTPServesWithStdinClosed(t *testing.T) {
 
 func freePort(t *testing.T) int {
 	t.Helper()
-	l, err := net.Listen("tcp", "127.0.0.1:0")
+	l, err := new(net.ListenConfig).Listen(t.Context(), "tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("listen: %v", err)
 	}
-	port := l.Addr().(*net.TCPAddr).Port
+	tcpAddr, ok := l.Addr().(*net.TCPAddr)
+	if !ok {
+		t.Fatalf("unexpected addr type %T", l.Addr())
+	}
+	port := tcpAddr.Port
 	if err := l.Close(); err != nil {
 		t.Fatalf("close probe listener: %v", err)
 	}

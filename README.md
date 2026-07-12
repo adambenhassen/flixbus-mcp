@@ -66,7 +66,6 @@ docker run --rm -p 8748:8748 ghcr.io/adambenhassen/flixbus-mcp
 go install github.com/adambenhassen/flixbus-mcp/cmd/flixbus-mcp@latest
 ```
 
-Prebuilt binaries for Linux, macOS and Windows are on the [releases page](https://github.com/adambenhassen/flixbus-mcp/releases).
 
 ## Tools
 
@@ -151,7 +150,7 @@ go test -tags smoke -timeout 5m ./smoke    # end-to-end against the live API
 golangci-lint run
 ```
 
-CI runs vet, race-enabled tests, the linter, and a Docker build on every push and PR; live smoke tests gate master and releases. Publishing a GitHub release builds binaries for five platforms and pushes the container image to `ghcr.io`.
+CI runs vet, race-enabled tests, the linter, and a Docker build on every push and PR; live smoke tests gate master and releases. Publishing a GitHub release pushes the container image to `ghcr.io`.
 
 ## How it works
 
