@@ -99,19 +99,31 @@ func TestSearchTrips(t *testing.T) {
 }
 
 func TestAPIError(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusBadRequest)
-		if _, err := w.Write([]byte(`{"code":400,"message":"To city id X was not found!"}`)); err != nil {
-			t.Errorf("write: %v", err)
-		}
-	}))
-	t.Cleanup(srv.Close)
-	c := flixbus.New(srv.URL, "", 5*time.Second)
-	_, err := c.SearchTrips(context.Background(), flixbus.SearchParams{Adults: 1})
-	if err == nil {
-		t.Fatal("want error on 400")
+	cases := []struct {
+		name string
+		body string
+		want string // substring the returned error must carry
+	}{
+		{"json message", `{"code":400,"message":"To city id X was not found!"}`, "To city id X was not found!"},
+		{"plain text fallback", `service unavailable, try later`, "service unavailable, try later"},
 	}
-	if want := "To city id X was not found!"; !strings.Contains(err.Error(), want) {
-		t.Errorf("error %q does not contain API message %q", err, want)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusBadRequest)
+				if _, err := w.Write([]byte(tc.body)); err != nil {
+					t.Errorf("write: %v", err)
+				}
+			}))
+			t.Cleanup(srv.Close)
+			c := flixbus.New(srv.URL, "", 5*time.Second)
+			_, err := c.SearchTrips(context.Background(), flixbus.SearchParams{Adults: 1})
+			if err == nil {
+				t.Fatal("want error on 400")
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Errorf("error %q does not contain %q", err, tc.want)
+			}
+		})
 	}
 }

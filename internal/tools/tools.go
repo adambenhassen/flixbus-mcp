@@ -6,9 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/url"
 	"slices"
-	"strconv"
 	"strings"
 	"time"
 
@@ -45,7 +43,7 @@ func Register(server *mcp.Server, d *Deps) {
 // SearchCitiesIn is the input for the search_cities tool.
 type SearchCitiesIn struct {
 	Query string `json:"query"          jsonschema:"city name or prefix, e.g. Berlin"`
-	Lang  string `json:"lang,omitempty" jsonschema:"ISO 639-1 language for results, default en"`
+	Lang  string `json:"lang,omitempty" jsonschema:"ISO 639-1 language for results, defaults to the server locale"`
 }
 
 // CityOut is one city match.
@@ -68,7 +66,7 @@ func (d *Deps) searchCities(ctx context.Context, _ *mcp.CallToolRequest, in Sear
 	if strings.TrimSpace(in.Query) == "" {
 		return nil, SearchCitiesOut{}, errors.New("query is required")
 	}
-	lang := cmp.Or(in.Lang, "en")
+	lang := cmp.Or(in.Lang, langFromLocale(d.Cfg.Locale))
 	cities, err := d.Client.AutocompleteCities(ctx, in.Query, lang)
 	if err != nil {
 		return nil, SearchCitiesOut{}, err
@@ -96,7 +94,8 @@ type SearchTripsIn struct {
 	Adults     int    `json:"adults,omitempty"      jsonschema:"adult passengers, default 1"`
 	Children   int    `json:"children,omitempty"    jsonschema:"child passengers, default 0"`
 	Bikes      int    `json:"bikes,omitempty"       jsonschema:"bike slots, default 0"`
-	Currency   string `json:"currency,omitempty"    jsonschema:"ISO 4217 price currency, default EUR"`
+	Currency   string `json:"currency,omitempty"    jsonschema:"ISO 4217 price currency, defaults to the server currency (EUR unless configured)"`
+	Lang       string `json:"lang,omitempty"        jsonschema:"ISO 639-1 language for resolving city names, defaults to the server locale"`
 	MaxResults int    `json:"max_results,omitempty" jsonschema:"maximum trips returned, default 20"`
 }
 
@@ -153,7 +152,7 @@ func (d *Deps) searchTrips(ctx context.Context, _ *mcp.CallToolRequest, in Searc
 		return nil, zero, fmt.Errorf("max_results must be 1-%d", capMaxResults)
 	}
 
-	lang := langFromLocale(d.Cfg.Locale)
+	lang := cmp.Or(in.Lang, langFromLocale(d.Cfg.Locale))
 	fromID, fromName, err := resolveCity(ctx, d.Client, in.From, lang)
 	if err != nil {
 		return nil, zero, fmt.Errorf("from: %w", err)
@@ -163,7 +162,7 @@ func (d *Deps) searchTrips(ctx context.Context, _ *mcp.CallToolRequest, in Searc
 		return nil, zero, fmt.Errorf("to: %w", err)
 	}
 
-	resp, err := d.Client.SearchTrips(ctx, flixbus.SearchParams{
+	params := flixbus.SearchParams{
 		FromCityID:    fromID,
 		ToCityID:      toID,
 		DepartureDate: day,
@@ -172,12 +171,13 @@ func (d *Deps) searchTrips(ctx context.Context, _ *mcp.CallToolRequest, in Searc
 		Bikes:         in.Bikes,
 		Currency:      currency,
 		Locale:        d.Cfg.Locale,
-	})
+	}
+	resp, err := d.Client.SearchTrips(ctx, params)
 	if err != nil {
 		return nil, zero, err
 	}
 
-	booking := bookingURL(fromID, toID, day, adults, in.Children, in.Bikes)
+	booking := flixbus.BookingURL(params)
 	trips := []TripOut{} // non-nil so empty results marshal as [], matching search_cities
 	for _, trip := range resp.Trips {
 		for _, r := range trip.Results {
@@ -212,21 +212,4 @@ func (d *Deps) searchTrips(ctx context.Context, _ *mcp.CallToolRequest, in Searc
 		Trips:    trips,
 	}
 	return nil, out, nil
-}
-
-// bookingURL builds a shop.flixbus.com deeplink (verified URL shape) carrying
-// the full passenger/product selection so the linked search matches the results.
-func bookingURL(fromID, toID string, day time.Time, adults, children, bikes int) string {
-	q := url.Values{}
-	q.Set("departureCity", fromID)
-	q.Set("arrivalCity", toID)
-	q.Set("rideDate", day.Format(flixbus.DateFormat))
-	q.Set("adult", strconv.Itoa(adults))
-	if children > 0 {
-		q.Set("children", strconv.Itoa(children))
-	}
-	if bikes > 0 {
-		q.Set("bike_slot", strconv.Itoa(bikes))
-	}
-	return "https://shop.flixbus.com/search?" + q.Encode()
 }

@@ -9,11 +9,19 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
 
 const userAgent = "flixbus-mcp/0.1"
+
+// Product keys shared by the search API's products param and the shop deeplink.
+const (
+	productAdult    = "adult"
+	productChildren = "children"
+	productBikeSlot = "bike_slot"
+)
 
 // Client calls global.api.flixbus.com. Safe for concurrent use.
 type Client struct {
@@ -47,12 +55,12 @@ func (c *Client) AutocompleteCities(ctx context.Context, query, lang string) ([]
 
 // SearchTrips runs a v4 city-to-city search.
 func (c *Client) SearchTrips(ctx context.Context, p SearchParams) (*SearchResponse, error) {
-	products := map[string]int{"adult": p.Adults}
+	products := map[string]int{productAdult: p.Adults}
 	if p.Children > 0 {
-		products["children"] = p.Children
+		products[productChildren] = p.Children
 	}
 	if p.Bikes > 0 {
-		products["bike_slot"] = p.Bikes
+		products[productBikeSlot] = p.Bikes
 	}
 	pj, err := json.Marshal(products)
 	if err != nil {
@@ -94,7 +102,7 @@ func (c *Client) getJSON(ctx context.Context, path string, q url.Values, out any
 		}
 	}()
 	if resp.StatusCode != http.StatusOK {
-		return apiError(resp)
+		return errorFromResponse(resp)
 	}
 	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
 		return fmt.Errorf("decode response: %w", err)
@@ -102,8 +110,25 @@ func (c *Client) getJSON(ctx context.Context, path string, q url.Values, out any
 	return nil
 }
 
-// apiError extracts the API's own error message body when present.
-func apiError(resp *http.Response) error {
+// BookingURL builds a shop.flixbus.com deeplink (verified URL shape) from the
+// same params as a search, so the linked shop search matches the results.
+func BookingURL(p SearchParams) string {
+	q := url.Values{}
+	q.Set("departureCity", p.FromCityID)
+	q.Set("arrivalCity", p.ToCityID)
+	q.Set("rideDate", p.DepartureDate.Format(DateFormat))
+	q.Set(productAdult, strconv.Itoa(p.Adults))
+	if p.Children > 0 {
+		q.Set(productChildren, strconv.Itoa(p.Children))
+	}
+	if p.Bikes > 0 {
+		q.Set(productBikeSlot, strconv.Itoa(p.Bikes))
+	}
+	return "https://shop.flixbus.com/search?" + q.Encode()
+}
+
+// errorFromResponse extracts the API's own error message body when present.
+func errorFromResponse(resp *http.Response) error {
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 4096))
 	if err != nil {
 		return fmt.Errorf("api http %d (unreadable body: %w)", resp.StatusCode, err)

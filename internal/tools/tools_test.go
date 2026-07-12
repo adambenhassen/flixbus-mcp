@@ -151,3 +151,39 @@ func TestSearchCities(t *testing.T) {
 		t.Error("want error for empty query")
 	}
 }
+
+func TestSearchTripsEmptyResultsMarshalEmptySlice(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		var body string
+		switch r.URL.Path {
+		case "/search/autocomplete/cities":
+			body = `[{"id":"` + berlinUUID + `","name":"Berlin","country":"de","score":60,"is_flixbus_city":true}]`
+		case "/search/service/v4/search":
+			body = `{"trips":[],"cities":{}}`
+		default:
+			t.Errorf("unexpected path %s", r.URL.Path)
+			return
+		}
+		if _, err := w.Write([]byte(body)); err != nil {
+			t.Errorf("write: %v", err)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	d := &tools.Deps{
+		Client: flixbus.New(srv.URL, "", 5*time.Second),
+		Cfg:    config.Config{Currency: "EUR", Locale: "en_US"},
+	}
+	_, out, err := tools.SearchTripsHandler(d, context.Background(), nil, tools.SearchTripsIn{
+		From: "Berlin", To: munichUUID, Date: "2026-07-20",
+	})
+	if err != nil {
+		t.Fatalf("searchTrips: %v", err)
+	}
+	if out.Trips == nil {
+		t.Error("Trips is nil; zero results must marshal as [] like search_cities")
+	}
+	if len(out.Trips) != 0 {
+		t.Errorf("len(trips) = %d, want 0", len(out.Trips))
+	}
+}
