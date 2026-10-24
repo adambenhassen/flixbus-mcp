@@ -194,7 +194,8 @@ func (d *Deps) searchTrips(ctx context.Context, _ *mcp.CallToolRequest, in Searc
 			}
 			price, ok := r.EffectivePrice(resp.PlatformFeeRequired)
 			if !ok {
-				return nil, zero, fmt.Errorf("flixbus requires the platform fee in prices but trip %s has no fee-inclusive total — the API may have changed", r.UID)
+				// shortcut: omit trips without a trustworthy checkout total until FlixBus exposes one.
+				continue
 			}
 			trips = append(trips, TripOut{
 				Departure:        r.Departure.Date,

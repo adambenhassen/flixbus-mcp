@@ -211,6 +211,39 @@ func TestSearchTripsFeeNotRequired(t *testing.T) {
 	}
 }
 
+func TestSearchTripsSkipsMissingRequiredFeeInclusivePrice(t *testing.T) {
+	d := &tools.Deps{
+		Client: stubClient(t, []byte(`{
+		  "trips": [{"results": {
+		    "direct:missing": {
+		      "uid": "direct:missing", "status": "available",
+		      "departure": {"date": "2026-07-20T07:15:00+02:00"},
+		      "arrival": {"date": "2026-07-20T13:00:00+02:00"},
+		      "price": {"total": 39.99}
+		    },
+		    "direct:priced": {
+		      "uid": "direct:priced", "status": "available",
+		      "departure": {"date": "2026-07-20T08:15:00+02:00"},
+		      "arrival": {"date": "2026-07-20T14:00:00+02:00"},
+		      "price": {"total": 40.99, "total_with_platform_fee": 41.98}
+		    }
+		  }}],
+		  "cities": {}, "stations": {},
+		  "platform_fee_in_price_required": true
+		}`)),
+		Cfg: config.Config{Currency: "EUR", Locale: "en_US"},
+	}
+	_, out, err := tools.SearchTripsHandler(d, context.Background(), nil, tools.SearchTripsIn{
+		From: "Berlin", To: munichUUID, Date: "2026-07-20",
+	})
+	if err != nil {
+		t.Fatalf("searchTrips: %v", err)
+	}
+	if len(out.Trips) != 1 || out.Trips[0].Price != 41.98 {
+		t.Fatalf("trips = %+v, want only the fee-inclusive trip", out.Trips)
+	}
+}
+
 func TestSearchTripsShapeDriftFailsLoud(t *testing.T) {
 	// an available trip with no price means the API renamed fields; the tool
 	// must error instead of quoting 0.00
